@@ -6,9 +6,10 @@ from sqlmodel import col, delete, func, select
 
 from app import crud
 from app.api.deps import (
+    AdminOrManager,
+    AdminUser,
     CurrentUser,
     SessionDep,
-    get_current_active_superuser,
 )
 from app.core.config import settings
 from app.core.security import get_password_hash, verify_password
@@ -20,6 +21,7 @@ from app.models import (
     UserCreate,
     UserPublic,
     UserRegister,
+    UserRole,
     UsersPublic,
     UserUpdate,
     UserUpdateMe,
@@ -29,16 +31,13 @@ from app.utils import generate_new_account_email, send_email
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-@router.get(
-    "/",
-    dependencies=[Depends(get_current_active_superuser)],
-    response_model=UsersPublic,
-)
-def read_users(session: SessionDep, skip: int = 0, limit: int = 100) -> Any:
+@router.get("/", response_model=UsersPublic)
+def read_users(
+    session: SessionDep, current_user: AdminOrManager, skip: int = 0, limit: int = 100
+) -> Any:
     """
-    Retrieve users.
+    Retrieve users. Requires admin or manager role.
     """
-
     count_statement = select(func.count()).select_from(User)
     count = session.exec(count_statement).one()
 
@@ -51,12 +50,12 @@ def read_users(session: SessionDep, skip: int = 0, limit: int = 100) -> Any:
     return UsersPublic(data=users_public, count=count)
 
 
-@router.post(
-    "/", dependencies=[Depends(get_current_active_superuser)], response_model=UserPublic
-)
-def create_user(*, session: SessionDep, user_in: UserCreate) -> Any:
+@router.post("/", response_model=UserPublic)
+def create_user(
+    *, session: SessionDep, current_user: AdminUser, user_in: UserCreate
+) -> Any:
     """
-    Create new user.
+    Create new user. Requires admin role.
     """
     user = crud.get_user_by_email(session=session, email=user_in.email)
     if user:
@@ -165,35 +164,33 @@ def read_user_by_id(
 ) -> Any:
     """
     Get a specific user by id.
+    Own profile: any role. Other profiles: admin or manager only.
     """
     user = session.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
     if user == current_user:
         return user
-    if not current_user.is_superuser:
+    # Admin and manager can view any user
+    if current_user.role not in (UserRole.ADMIN, UserRole.MANAGER):
         raise HTTPException(
             status_code=403,
             detail="The user doesn't have enough privileges",
         )
-    if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
     return user
 
 
-@router.patch(
-    "/{user_id}",
-    dependencies=[Depends(get_current_active_superuser)],
-    response_model=UserPublic,
-)
+@router.patch("/{user_id}", response_model=UserPublic)
 def update_user(
     *,
     session: SessionDep,
+    current_user: AdminUser,
     user_id: uuid.UUID,
     user_in: UserUpdate,
 ) -> Any:
     """
-    Update a user.
+    Update a user. Requires admin role.
     """
-
     db_user = session.get(User, user_id)
     if not db_user:
         raise HTTPException(
@@ -211,19 +208,19 @@ def update_user(
     return db_user
 
 
-@router.delete("/{user_id}", dependencies=[Depends(get_current_active_superuser)])
+@router.delete("/{user_id}")
 def delete_user(
-    session: SessionDep, current_user: CurrentUser, user_id: uuid.UUID
+    session: SessionDep, current_user: AdminUser, user_id: uuid.UUID
 ) -> Message:
     """
-    Delete a user.
+    Delete a user. Requires admin role.
     """
     user = session.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if user == current_user:
         raise HTTPException(
-            status_code=403, detail="Super users are not allowed to delete themselves"
+            status_code=403, detail="Admins are not allowed to delete themselves"
         )
     statement = delete(Item).where(col(Item.owner_id) == user_id)
     session.exec(statement)
