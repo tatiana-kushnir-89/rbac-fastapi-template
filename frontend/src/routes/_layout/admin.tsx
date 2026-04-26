@@ -8,6 +8,7 @@ import { columns, type UserTableData } from "@/components/Admin/columns"
 import { DataTable } from "@/components/Common/DataTable"
 import PendingUsers from "@/components/Pending/PendingUsers"
 import useAuth from "@/hooks/useAuth"
+import { permissions } from "@/utils/rbac"
 
 function getUsersQueryOptions() {
   return {
@@ -20,18 +21,12 @@ export const Route = createFileRoute("/_layout/admin")({
   component: Admin,
   beforeLoad: async () => {
     const user = await UsersService.readUserMe()
-    if (!user.is_superuser) {
-      throw redirect({
-        to: "/",
-      })
+    if (!permissions.canListUsers(user.role)) {
+      throw redirect({ to: "/" })
     }
   },
   head: () => ({
-    meta: [
-      {
-        title: "Admin - FastAPI Template",
-      },
-    ],
+    meta: [{ title: "Admin - FastAPI Template" }],
   }),
 })
 
@@ -56,6 +51,8 @@ function UsersTable() {
 }
 
 function Admin() {
+  const { canCreateUsers } = useAuth()
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -65,7 +62,7 @@ function Admin() {
             Manage user accounts and permissions
           </p>
         </div>
-        <AddUser />
+        {canCreateUsers && <AddUser />}
       </div>
       <UsersTable />
     </div>

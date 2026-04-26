@@ -25,6 +25,54 @@
 - 📞 [Traefik](https://traefik.io) as a reverse proxy / load balancer.
 - 🚢 Deployment instructions using Docker Compose, including how to set up a frontend Traefik proxy to handle automatic HTTPS certificates.
 - 🏭 CI (continuous integration) and CD (continuous deployment) based on GitHub Actions.
+- 🔐 **Role-Based Access Control (RBAC)** with admin, manager, and member roles.
+
+## Role-Based Access Control (RBAC)
+
+This template includes a role-based authorization system with three roles:
+
+### Roles
+
+| Role | Description |
+|------|-------------|
+| **admin** | Full access to user management and settings |
+| **manager** | Can list users and view metrics, but cannot modify other users |
+| **member** | Can only access their own profile and basic app features |
+
+### Permission Matrix
+
+| Action | admin | manager | member |
+|--------|:-----:|:-------:|:------:|
+| List all users | ✓ | ✓ | ✗ |
+| Create user | ✓ | ✗ | ✗ |
+| View metrics | ✓ | ✓ | ✗ |
+| Update own profile | ✓ | ✓ | ✓ |
+| Update any profile | ✓ | ✗ | ✗ |
+| Delete user | ✓ | ✗ | ✗ |
+
+### Authorization Approach
+
+**Backend (FastAPI):**
+- Roles are stored as an enum field (`role`) on the `User` model
+- Authorization checks use FastAPI dependencies (`AdminUser`, `AdminOrManager`)
+- Dependencies validate the user's role and return 403 Forbidden if unauthorized
+- Located in `backend/app/api/deps.py`
+
+**Frontend (React):**
+- The `useAuth` hook provides role-checking helpers (`hasRole`, `isAdmin`, `canManageUsers`, etc.)
+- Navigation items are conditionally rendered based on user permissions
+- Routes use `beforeLoad` guards to redirect unauthorized users
+- Components hide action buttons (e.g., "Add User") for unauthorized roles
+
+### Test Users
+
+After running `docker compose up`, the following users are created:
+
+| Email | Password | Role |
+|-------|----------|------|
+| admin@example.com | changethis | admin |
+
+New users registered via signup get the `member` role by default.
 
 ### Dashboard Login
 
@@ -118,6 +166,66 @@ This will download the latest changes from this template without committing them
 
 ```bash
 git merge --continue
+```
+
+### Quick Start
+
+1. Clone the repository:
+```bash
+git clone <repo-url>
+cd rbac-fastapi-template
+```
+
+2. Start the application:
+```bash
+docker compose up -d
+```
+
+3. Open the application:
+- Frontend: http://localhost:5173
+- API docs: http://localhost:8000/docs
+- Mailcatcher: http://localhost:1080
+
+4. Login with admin credentials:
+- Email: `admin@example.com`
+- Password: `changethis`
+
+### Run Tests
+
+Run backend tests (including RBAC tests):
+```bash
+docker compose exec backend pytest tests/api/routes/test_rbac.py -v
+```
+
+Run all backend tests:
+```bash
+docker compose exec backend pytest
+```
+
+### Seed Test Users
+
+The first superuser (admin) is created automatically on startup.
+
+To create additional test users with different roles, use the API:
+```bash
+# Create a manager
+curl -X POST "http://localhost:8000/api/v1/users/" \
+  -H "Authorization: Bearer <admin_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "manager@example.com", "password": "password123", "role": "manager"}'
+
+# Create a member
+curl -X POST "http://localhost:8000/api/v1/users/" \
+  -H "Authorization: Bearer <admin_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "member@example.com", "password": "password123", "role": "member"}'
+```
+
+### Database Migration
+
+If you're adding RBAC to an existing database, run the migration:
+```bash
+docker compose exec backend alembic upgrade head
 ```
 
 ### Configure

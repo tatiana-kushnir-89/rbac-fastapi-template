@@ -9,6 +9,7 @@ import {
   UsersService,
 } from "@/client"
 import { handleError } from "@/utils"
+import { hasRole, permissions, type UserRole } from "@/utils/rbac"
 import useCustomToast from "./useCustomToast"
 
 const isLoggedIn = () => {
@@ -58,11 +59,23 @@ const useAuth = () => {
     navigate({ to: "/login" })
   }
 
+  // Role-based access helpers
+  const userRole = user?.role as UserRole | undefined
+
   return {
     signUpMutation,
     loginMutation,
     logout,
     user,
+    // Role checks
+    hasRole: (roles: UserRole | UserRole[]) => hasRole(userRole, roles),
+    isAdmin: userRole === "admin",
+    isManager: userRole === "manager",
+    isMember: userRole === "member",
+    // Permission checks
+    canManageUsers: permissions.canListUsers(userRole),
+    canCreateUsers: permissions.canCreateUsers(userRole),
+    canViewMetrics: permissions.canViewMetrics(userRole),
   }
 }
 
