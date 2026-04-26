@@ -11,7 +11,7 @@ from sqlmodel import Session
 from app.core import security
 from app.core.config import settings
 from app.core.db import engine
-from app.models import TokenPayload, User
+from app.models import TokenPayload, User, UserRole
 
 reusable_oauth2 = OAuth2PasswordBearer(
     tokenUrl=f"{settings.API_V1_STR}/login/access-token"
@@ -55,3 +55,35 @@ def get_current_active_superuser(current_user: CurrentUser) -> User:
             status_code=403, detail="The user doesn't have enough privileges"
         )
     return current_user
+
+
+# =============================================================================
+# Role-Based Access Control
+# =============================================================================
+
+class RoleChecker:
+    """
+    Reusable dependency for role-based authorization.
+
+    Usage:
+        @router.get("/", dependencies=[Depends(RoleChecker(UserRole.ADMIN))])
+
+        # Or as typed dependency:
+        AdminUser = Annotated[User, Depends(RoleChecker(UserRole.ADMIN))]
+    """
+
+    def __init__(self, *allowed_roles: UserRole):
+        self.allowed_roles = allowed_roles
+
+    def __call__(self, current_user: CurrentUser) -> User:
+        if current_user.role not in self.allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access denied. Required role: {[r.value for r in self.allowed_roles]}"
+            )
+        return current_user
+
+
+# Pre-configured role checkers as typed dependencies
+AdminUser = Annotated[User, Depends(RoleChecker(UserRole.ADMIN))]
+AdminOrManager = Annotated[User, Depends(RoleChecker(UserRole.ADMIN, UserRole.MANAGER))]
